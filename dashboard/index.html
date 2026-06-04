@@ -14,6 +14,7 @@
     .toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0 18px; flex-wrap: wrap; }
     input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 320px; }
     button { padding: 10px 14px; border: 1px solid #2563eb; color: #fff; background: #2563eb; border-radius: 8px; cursor: pointer; }
+    code { background: #eaf0f8; border: 1px solid #d5e0ee; border-radius: 6px; padding: 2px 6px; }
     .cards { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; margin: 16px 0 14px; }
     .card { background: #fff; border: 1px solid #dbe4ee; border-radius: 8px; padding: 14px; }
     .value { font-size: 26px; font-weight: 700; }
@@ -49,6 +50,7 @@
       <button id="load">刷新数据</button>
       <span id="status" class="muted"></span>
     </div>
+    <div id="apiHint" class="muted"></div>
     <div class="cards" id="cards"></div>
     <div class="dimension-grid">
       <section class="wide"><h2>按天趋势</h2><div class="section-note">看每天用户、事件、检测启动量。</div><div id="byDay"></div></section>
@@ -63,8 +65,13 @@
   <script>
     const cfg = window.QINGHE_ANALYTICS_CONFIG || {};
     const tokenInput = document.getElementById("token");
+    const statusEl = document.getElementById("status");
+    const apiHintEl = document.getElementById("apiHint");
     const savedToken = localStorage.getItem("qinghe_admin_token") || "";
     tokenInput.value = savedToken;
+    apiHintEl.innerHTML = cfg.API_BASE
+      ? `API: <code>${cfg.API_BASE}</code>`
+      : '未配置 Worker API_BASE，请检查 config.js。';
 
     function n(value) {
       if (value === null || value === undefined || Number.isNaN(Number(value))) return "0";
@@ -133,11 +140,20 @@
       }
       const token = tokenInput.value.trim();
       localStorage.setItem("qinghe_admin_token", token);
-      document.getElementById("status").textContent = "加载中...";
+      if (!token) {
+        throw new Error("请输入后台 Admin Token 后刷新");
+      }
+      statusEl.textContent = "加载中...";
       const res = await fetch(`${cfg.API_BASE}/api/summary`, {
         headers: { "Authorization": `Bearer ${token}` },
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (_error) {
+        throw new Error(`API 返回不是 JSON: HTTP ${res.status} ${text.slice(0, 120)}`);
+      }
       if (!data.ok) throw new Error(data.error || "加载失败");
       const totals = data.totals || {};
       const cardData = [
@@ -161,12 +177,17 @@
       document.getElementById("byCity").innerHTML = table(data.byCity, { keys: ["country", "city", "users", "events"], barKey: "events" });
       document.getElementById("byVersion").innerHTML = table(data.byVersion, { keys: ["app_version", "resolve_version", "platform", "users", "events"], barKey: "events" });
       document.getElementById("recent").innerHTML = table(data.recent, { keys: ["created_at", "event", "country", "region", "city", "app_version", "resolve_version", "platform", "session_seconds"] });
-      document.getElementById("status").textContent = `已刷新 ${new Date().toLocaleString()}`;
+      statusEl.textContent = `已刷新 ${new Date().toLocaleString()}`;
     }
 
     document.getElementById("load").addEventListener("click", () => {
-      loadData().catch(err => document.getElementById("status").textContent = err.message);
+      loadData().catch(err => statusEl.textContent = err.message);
     });
+    if (savedToken) {
+      loadData().catch(err => statusEl.textContent = err.message);
+    } else {
+      statusEl.textContent = "等待输入 Admin Token";
+    }
   </script>
 </body>
 </html>
