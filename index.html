@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>清何 BFD 插件使用统计</title>
+  <script src="./config.js"></script>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; background: #f6f8fb; color: #172033; }
+    header { padding: 24px 28px 12px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .muted { color: #64748b; }
+    main { padding: 0 28px 32px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0 18px; }
+    input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 320px; }
+    button { padding: 10px 14px; border: 1px solid #2563eb; color: #fff; background: #2563eb; border-radius: 8px; cursor: pointer; }
+    .cards { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+    .card { background: #fff; border: 1px solid #dbe4ee; border-radius: 8px; padding: 14px; }
+    .value { font-size: 26px; font-weight: 700; }
+    .label { color: #64748b; margin-top: 4px; }
+    section { background: #fff; border: 1px solid #dbe4ee; border-radius: 8px; margin: 14px 0; padding: 14px; overflow: auto; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; white-space: nowrap; }
+    th { color: #475569; background: #f8fafc; }
+    @media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>清何 BFD 插件使用统计</h1>
+    <div class="muted">匿名统计：用户数、地区、启动次数、检测频率、会话时长。不显示原始 IP。</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="token" type="password" placeholder="后台 Admin Token">
+      <button id="load">刷新数据</button>
+      <span id="status" class="muted"></span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <section><h2>按天</h2><div id="byDay"></div></section>
+    <section><h2>国家/地区</h2><div id="byCountry"></div></section>
+    <section><h2>城市</h2><div id="byCity"></div></section>
+    <section><h2>版本 / 系统</h2><div id="byVersion"></div></section>
+    <section><h2>最近事件</h2><div id="recent"></div></section>
+  </main>
+  <script>
+    const cfg = window.QINGHE_ANALYTICS_CONFIG || {};
+    const tokenInput = document.getElementById("token");
+    const savedToken = localStorage.getItem("qinghe_admin_token") || "";
+    tokenInput.value = savedToken;
+
+    function n(value) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return "0";
+      return Number(value).toLocaleString("zh-CN", { maximumFractionDigits: 1 });
+    }
+
+    function table(rows) {
+      if (!rows || !rows.length) return '<div class="muted">暂无数据</div>';
+      const keys = Object.keys(rows[0]);
+      return `<table><thead><tr>${keys.map(k => `<th>${k}</th>`).join("")}</tr></thead><tbody>` +
+        rows.map(row => `<tr>${keys.map(k => `<td>${row[k] ?? ""}</td>`).join("")}</tr>`).join("") +
+        "</tbody></table>";
+    }
+
+    async function loadData() {
+      if (!cfg.API_BASE) {
+        throw new Error("请先在 config.js 里配置 Worker API_BASE");
+      }
+      const token = tokenInput.value.trim();
+      localStorage.setItem("qinghe_admin_token", token);
+      document.getElementById("status").textContent = "加载中...";
+      const res = await fetch(`${cfg.API_BASE}/api/summary`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "加载失败");
+      const totals = data.totals || {};
+      const cardData = [
+        ["用户", totals.users],
+        ["事件", totals.events],
+        ["启动", totals.starts],
+        ["开始检测", totals.detect_starts],
+        ["检测完成", totals.detect_done],
+        ["平均时长(秒)", totals.avg_session_seconds],
+      ];
+      document.getElementById("cards").innerHTML = cardData.map(([label, value]) =>
+        `<div class="card"><div class="value">${n(value)}</div><div class="label">${label}</div></div>`
+      ).join("");
+      document.getElementById("byDay").innerHTML = table(data.byDay);
+      document.getElementById("byCountry").innerHTML = table(data.byCountry);
+      document.getElementById("byCity").innerHTML = table(data.byCity);
+      document.getElementById("byVersion").innerHTML = table(data.byVersion);
+      document.getElementById("recent").innerHTML = table(data.recent);
+      document.getElementById("status").textContent = `已刷新 ${new Date().toLocaleString()}`;
+    }
+
+    document.getElementById("load").addEventListener("click", () => {
+      loadData().catch(err => document.getElementById("status").textContent = err.message);
+    });
+  </script>
+</body>
+</html>

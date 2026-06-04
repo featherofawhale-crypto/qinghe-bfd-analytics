@@ -1,0 +1,3 @@
+window.QINGHE_ANALYTICS_CONFIG = {
+  API_BASE: "",
+};
