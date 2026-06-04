@@ -1,0 +1,8 @@
+name = "qinghe-bfd-analytics"
+main = "worker.js"
+compatibility_date = "2026-06-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "qinghe_bfd_analytics"
+database_id = "replace-with-cloudflare-d1-id"
