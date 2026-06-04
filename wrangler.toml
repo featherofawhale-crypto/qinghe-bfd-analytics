@@ -5,4 +5,4 @@ compatibility_date = "2026-06-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "qinghe_bfd_analytics"
-database_id = "replace-with-cloudflare-d1-id"
+database_id = "ccb2b2dc-120c-4872-806b-eefd0597f0fd"

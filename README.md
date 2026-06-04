@@ -56,13 +56,13 @@ wrangler deploy
 发布后得到类似：
 
 ```text
-https://qinghe-bfd-analytics.xxx.workers.dev
+https://qinghe-bfd-analytics.featherofawhale.workers.dev
 ```
 
 插件里把 `ANALYTICS_ENDPOINT_URL` 改为：
 
 ```python
-ANALYTICS_ENDPOINT_URL = "https://qinghe-bfd-analytics.xxx.workers.dev/collect"
+ANALYTICS_ENDPOINT_URL = "https://qinghe-bfd-analytics.featherofawhale.workers.dev/collect"
 ```
 
 ## 部署 GitHub Pages 看板
@@ -77,7 +77,7 @@ cp dashboard/config.example.js dashboard/config.js
 
 ```js
 window.QINGHE_ANALYTICS_CONFIG = {
-  API_BASE: "https://qinghe-bfd-analytics.xxx.workers.dev",
+  API_BASE: "https://qinghe-bfd-analytics.featherofawhale.workers.dev",
 };
 ```
 
