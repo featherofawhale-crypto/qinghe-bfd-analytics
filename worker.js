@@ -116,6 +116,16 @@ async function summary(request, env) {
     `SELECT app_version, resolve_version, platform, COUNT(DISTINCT install_hash) AS users, COUNT(*) AS events
      FROM events GROUP BY app_version, resolve_version, platform ORDER BY events DESC LIMIT 50`
   ).all();
+  const byEvent = await env.DB.prepare(
+    `SELECT event, COUNT(*) AS events, COUNT(DISTINCT install_hash) AS users
+     FROM events GROUP BY event ORDER BY events DESC LIMIT 50`
+  ).all();
+  const byPlatform = await env.DB.prepare(
+    `SELECT platform, COUNT(DISTINCT install_hash) AS users, COUNT(*) AS events,
+      SUM(CASE WHEN event = 'detect_start' THEN 1 ELSE 0 END) AS detect_starts,
+      SUM(CASE WHEN event = 'detect_done' THEN 1 ELSE 0 END) AS detect_done
+     FROM events GROUP BY platform ORDER BY events DESC LIMIT 50`
+  ).all();
   const recent = await env.DB.prepare(
     `SELECT event, created_at, country, region, city, app_version, resolve_version, platform, session_seconds
      FROM events ORDER BY created_at DESC LIMIT 80`
@@ -128,6 +138,8 @@ async function summary(request, env) {
     byCity: byCity.results || [],
     byDay: byDay.results || [],
     byVersion: byVersion.results || [],
+    byEvent: byEvent.results || [],
+    byPlatform: byPlatform.results || [],
     recent: recent.results || [],
   });
 }

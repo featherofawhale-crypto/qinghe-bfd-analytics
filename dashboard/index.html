@@ -11,19 +11,31 @@
     h1 { margin: 0 0 8px; font-size: 28px; }
     .muted { color: #64748b; }
     main { padding: 0 28px 32px; }
-    .toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0 18px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0 18px; flex-wrap: wrap; }
     input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 320px; }
     button { padding: 10px 14px; border: 1px solid #2563eb; color: #fff; background: #2563eb; border-radius: 8px; cursor: pointer; }
-    .cards { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+    .cards { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; margin: 16px 0 14px; }
     .card { background: #fff; border: 1px solid #dbe4ee; border-radius: 8px; padding: 14px; }
     .value { font-size: 26px; font-weight: 700; }
     .label { color: #64748b; margin-top: 4px; }
+    .subvalue { color: #64748b; font-size: 12px; margin-top: 6px; }
+    .dimension-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; align-items: start; }
     section { background: #fff; border: 1px solid #dbe4ee; border-radius: 8px; margin: 14px 0; padding: 14px; overflow: auto; }
-    h2 { font-size: 16px; margin: 0 0 10px; }
+    .wide { grid-column: 1 / -1; }
+    h2 { font-size: 16px; margin: 0 0 4px; }
+    .section-note { color: #64748b; font-size: 12px; margin: 0 0 10px; }
     table { border-collapse: collapse; width: 100%; font-size: 14px; }
     th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; white-space: nowrap; }
     th { color: #475569; background: #f8fafc; }
-    @media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .bar-cell { min-width: 120px; }
+    .bar { height: 7px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: #2563eb; border-radius: inherit; }
+    @media (max-width: 1100px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .dimension-grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+    }
   </style>
 </head>
 <body>
@@ -38,11 +50,15 @@
       <span id="status" class="muted"></span>
     </div>
     <div class="cards" id="cards"></div>
-    <section><h2>按天</h2><div id="byDay"></div></section>
-    <section><h2>国家/地区</h2><div id="byCountry"></div></section>
-    <section><h2>城市</h2><div id="byCity"></div></section>
-    <section><h2>版本 / 系统</h2><div id="byVersion"></div></section>
-    <section><h2>最近事件</h2><div id="recent"></div></section>
+    <div class="dimension-grid">
+      <section class="wide"><h2>按天趋势</h2><div class="section-note">看每天用户、事件、检测启动量。</div><div id="byDay"></div></section>
+      <section><h2>事件维度</h2><div class="section-note">启动、开始检测、检测完成、关闭等行为分布。</div><div id="byEvent"></div></section>
+      <section><h2>平台维度</h2><div class="section-note">不同系统上的用户和检测完成情况。</div><div id="byPlatform"></div></section>
+      <section><h2>国家/地区</h2><div class="section-note">按国家或地区统计用户和事件。</div><div id="byCountry"></div></section>
+      <section><h2>城市</h2><div class="section-note">Cloudflare 返回的粗略城市维度。</div><div id="byCity"></div></section>
+      <section class="wide"><h2>版本 / Resolve / 系统</h2><div class="section-note">判断哪些插件版本、达芬奇版本使用最多。</div><div id="byVersion"></div></section>
+      <section class="wide"><h2>最近事件</h2><div class="section-note">最近 80 条匿名事件，不包含原始 IP。</div><div id="recent"></div></section>
+    </div>
   </main>
   <script>
     const cfg = window.QINGHE_ANALYTICS_CONFIG || {};
@@ -55,12 +71,60 @@
       return Number(value).toLocaleString("zh-CN", { maximumFractionDigits: 1 });
     }
 
-    function table(rows) {
+    function pct(part, whole) {
+      const p = Number(part || 0);
+      const w = Number(whole || 0);
+      if (!w) return "0%";
+      return `${((p / w) * 100).toFixed(1)}%`;
+    }
+
+    function bar(value, max) {
+      const width = max ? Math.max(2, Math.min(100, Number(value || 0) / max * 100)) : 0;
+      return `<div class="bar"><span style="width:${width}%"></span></div>`;
+    }
+
+    const labels = {
+      users: "用户",
+      events: "事件",
+      starts: "启动",
+      detect_starts: "开始检测",
+      detect_done: "检测完成",
+      avg_session_seconds: "平均时长(秒)",
+      country: "国家/地区",
+      region: "省/区域",
+      city: "城市",
+      day: "日期",
+      app_version: "插件版本",
+      resolve_version: "Resolve 版本",
+      platform: "系统",
+      event: "事件",
+      created_at: "时间",
+      session_seconds: "会话秒数",
+      completion_rate: "完成率",
+      share: "占比",
+    };
+
+    function table(rows, options = {}) {
       if (!rows || !rows.length) return '<div class="muted">暂无数据</div>';
-      const keys = Object.keys(rows[0]);
-      return `<table><thead><tr>${keys.map(k => `<th>${k}</th>`).join("")}</tr></thead><tbody>` +
-        rows.map(row => `<tr>${keys.map(k => `<td>${row[k] ?? ""}</td>`).join("")}</tr>`).join("") +
+      const keys = options.keys || Object.keys(rows[0]);
+      const numeric = new Set(options.numeric || ["users", "events", "detect_starts", "detect_done", "session_seconds", "avg_session_seconds"]);
+      const maxBy = {};
+      for (const key of keys) {
+        maxBy[key] = Math.max(...rows.map(row => Number(row[key] || 0)));
+      }
+      return `<table><thead><tr>${keys.map(k => `<th class="${numeric.has(k) ? "num" : ""}">${labels[k] || k}</th>`).join("")}</tr></thead><tbody>` +
+        rows.map(row => `<tr>${keys.map(k => {
+          const value = row[k] ?? "";
+          if (k === "share" || k === "completion_rate") return `<td class="num">${value}</td>`;
+          if (options.barKey === k) return `<td class="bar-cell">${bar(row[k], maxBy[k])}</td>`;
+          return `<td class="${numeric.has(k) ? "num" : ""}">${numeric.has(k) ? n(value) : value}</td>`;
+        }).join("")}</tr>`).join("") +
         "</tbody></table>";
+    }
+
+    function withShare(rows, key = "events") {
+      const total = rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+      return rows.map(row => ({ ...row, share: pct(row[key], total) }));
     }
 
     async function loadData() {
@@ -77,21 +141,26 @@
       if (!data.ok) throw new Error(data.error || "加载失败");
       const totals = data.totals || {};
       const cardData = [
-        ["用户", totals.users],
-        ["事件", totals.events],
-        ["启动", totals.starts],
-        ["开始检测", totals.detect_starts],
-        ["检测完成", totals.detect_done],
-        ["平均时长(秒)", totals.avg_session_seconds],
+        ["用户", totals.users, "匿名安装数"],
+        ["事件", totals.events, "全部上报行为"],
+        ["启动", totals.starts, "打开插件次数"],
+        ["开始检测", totals.detect_starts, "点击检测次数"],
+        ["检测完成", totals.detect_done, `完成率 ${pct(totals.detect_done, totals.detect_starts)}`],
+        ["平均时长(秒)", totals.avg_session_seconds, "关闭时上报"],
       ];
-      document.getElementById("cards").innerHTML = cardData.map(([label, value]) =>
-        `<div class="card"><div class="value">${n(value)}</div><div class="label">${label}</div></div>`
+      document.getElementById("cards").innerHTML = cardData.map(([label, value, sub]) =>
+        `<div class="card"><div class="value">${n(value)}</div><div class="label">${label}</div><div class="subvalue">${sub}</div></div>`
       ).join("");
-      document.getElementById("byDay").innerHTML = table(data.byDay);
-      document.getElementById("byCountry").innerHTML = table(data.byCountry);
-      document.getElementById("byCity").innerHTML = table(data.byCity);
-      document.getElementById("byVersion").innerHTML = table(data.byVersion);
-      document.getElementById("recent").innerHTML = table(data.recent);
+      document.getElementById("byDay").innerHTML = table(data.byDay, { keys: ["day", "users", "events", "detect_starts"], barKey: "events" });
+      document.getElementById("byEvent").innerHTML = table(withShare(data.byEvent || []), { keys: ["event", "users", "events", "share"] });
+      document.getElementById("byPlatform").innerHTML = table((data.byPlatform || []).map(row => ({
+        ...row,
+        completion_rate: pct(row.detect_done, row.detect_starts),
+      })), { keys: ["platform", "users", "events", "detect_starts", "detect_done", "completion_rate"] });
+      document.getElementById("byCountry").innerHTML = table(withShare(data.byCountry || []), { keys: ["country", "users", "events", "share"], barKey: "events" });
+      document.getElementById("byCity").innerHTML = table(data.byCity, { keys: ["country", "city", "users", "events"], barKey: "events" });
+      document.getElementById("byVersion").innerHTML = table(data.byVersion, { keys: ["app_version", "resolve_version", "platform", "users", "events"], barKey: "events" });
+      document.getElementById("recent").innerHTML = table(data.recent, { keys: ["created_at", "event", "country", "region", "city", "app_version", "resolve_version", "platform", "session_seconds"] });
       document.getElementById("status").textContent = `已刷新 ${new Date().toLocaleString()}`;
     }
 
