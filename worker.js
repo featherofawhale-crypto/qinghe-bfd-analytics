@@ -51,16 +51,60 @@ function uniqueTexts(values, maxItems, maxChars = 160) {
   return result;
 }
 
+function compactFontKey(value) {
+  let text = String(value || "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  for (const token of [" ", "-", "_", ".", "regular", "normal", "常规", "標準", "标准"]) {
+    text = text.split(token).join("");
+  }
+  return text;
+}
+
+function hasChinese(value) {
+  return /[\u3400-\u9fff]/.test(String(value || ""));
+}
+
+function preferredFontName(names) {
+  const cleanNames = uniqueTexts(names, 32);
+  if (!cleanNames.length) return "";
+  const chinese = cleanNames.filter(hasChinese);
+  const pool = chinese.length ? chinese : cleanNames;
+  return [...pool].sort((a, b) => (a.length - b.length) || a.localeCompare(b, "zh-CN"))[0];
+}
+
+function compactFontInventory(fonts, aliases, limit) {
+  const groups = new Map();
+  const rawAliases = aliases && typeof aliases === "object" ? aliases : {};
+  for (const font of Array.isArray(fonts) ? fonts : []) {
+    const cleanFont = cleanText(String(font || "").replace(/\s+/g, " ").trim(), 160);
+    if (!cleanFont) continue;
+    const names = [cleanFont, ...(Array.isArray(rawAliases[cleanFont]) ? rawAliases[cleanFont] : [])];
+    const keys = names.map(compactFontKey).filter(Boolean).sort((a, b) => a.length - b.length);
+    const groupKey = keys[0] || compactFontKey(cleanFont);
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push(...names);
+  }
+  const compacted = [];
+  const seen = new Set();
+  for (const names of groups.values()) {
+    const preferred = preferredFontName(names);
+    const key = compactFontKey(preferred);
+    if (!preferred || seen.has(key)) continue;
+    seen.add(key);
+    compacted.push(preferred);
+    if (compacted.length >= limit) break;
+  }
+  return compacted.sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
 function trimExtra(event, extra) {
   if (!extra || typeof extra !== "object") return {};
   if (event !== "font_inventory") return extra;
-  const fonts = uniqueTexts(extra.fonts, MAX_FONT_INVENTORY_FONTS);
   const aliases = {};
   const rawAliases = extra.aliases && typeof extra.aliases === "object" ? extra.aliases : {};
   const seenAliasKeys = new Set();
   for (const [key, values] of Object.entries(rawAliases)) {
     const cleanKey = cleanText(String(key || "").replace(/\s+/g, " ").trim(), 160);
-    const foldedKey = cleanKey.toLocaleLowerCase();
+    const foldedKey = compactFontKey(cleanKey);
     if (!cleanKey || seenAliasKeys.has(foldedKey)) continue;
     const cleanValues = uniqueTexts(values, MAX_FONT_ALIAS_VALUES);
     if (!cleanValues.length) continue;
@@ -68,6 +112,7 @@ function trimExtra(event, extra) {
     aliases[cleanKey] = cleanValues;
     if (Object.keys(aliases).length >= MAX_FONT_INVENTORY_ALIAS_KEYS) break;
   }
+  const fonts = compactFontInventory(extra.fonts, aliases, MAX_FONT_INVENTORY_FONTS);
   return {
     app_version: cleanText(extra.app_version, 32),
     resolve_version: cleanText(extra.resolve_version, 64),
@@ -198,8 +243,19 @@ async function fontData(request, env) {
       });
     }
     if (row.event === "font_inventory") {
-      const fonts = Array.isArray(extra.fonts) ? extra.fonts.map((item) => cleanText(item, 160)).filter(Boolean) : [];
-      const aliases = extra.aliases && typeof extra.aliases === "object" ? extra.aliases : {};
+      const rawAliases = extra.aliases && typeof extra.aliases === "object" ? extra.aliases : {};
+      const aliases = {};
+      const seenAliasKeys = new Set();
+      for (const [name, values] of Object.entries(rawAliases)) {
+        const cleanName = cleanText(name, 160);
+        const key = compactFontKey(cleanName);
+        if (!cleanName || seenAliasKeys.has(key)) continue;
+        const cleanValues = uniqueTexts(values, MAX_FONT_ALIAS_VALUES);
+        if (!cleanValues.length) continue;
+        aliases[cleanName] = cleanValues;
+        seenAliasKeys.add(key);
+      }
+      const fonts = compactFontInventory(extra.fonts, aliases, MAX_FONT_INVENTORY_FONTS);
       const learned = Array.isArray(extra.learned_rules) ? extra.learned_rules : [];
       for (const font of fonts) fontSet.add(font);
       for (const [name, values] of Object.entries(aliases)) {
