@@ -3,6 +3,10 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Admin-Token",
 };
+const MAX_EXTRA_JSON_CHARS = 200000;
+const MAX_FONT_INVENTORY_FONTS = 2500;
+const MAX_FONT_INVENTORY_ALIAS_KEYS = 2500;
+const MAX_FONT_ALIAS_VALUES = 12;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -33,6 +37,58 @@ function cleanText(value, max = 120) {
   return String(value || "").slice(0, max);
 }
 
+function trimExtra(event, extra) {
+  if (!extra || typeof extra !== "object") return {};
+  if (event !== "font_inventory") return extra;
+  const fonts = Array.isArray(extra.fonts)
+    ? extra.fonts.slice(0, MAX_FONT_INVENTORY_FONTS).map((item) => cleanText(item, 160)).filter(Boolean)
+    : [];
+  const aliases = {};
+  const rawAliases = extra.aliases && typeof extra.aliases === "object" ? extra.aliases : {};
+  for (const [key, values] of Object.entries(rawAliases).slice(0, MAX_FONT_INVENTORY_ALIAS_KEYS)) {
+    const cleanKey = cleanText(key, 160);
+    if (!cleanKey || !Array.isArray(values)) continue;
+    aliases[cleanKey] = values.slice(0, MAX_FONT_ALIAS_VALUES).map((item) => cleanText(item, 160)).filter(Boolean);
+  }
+  return {
+    app_version: cleanText(extra.app_version, 32),
+    resolve_version: cleanText(extra.resolve_version, 64),
+    platform: cleanText(extra.platform, 32),
+    platform_release: cleanText(extra.platform_release, 64),
+    exported_at: cleanText(extra.exported_at, 40),
+    learned_rules: Array.isArray(extra.learned_rules) ? extra.learned_rules.slice(-300) : [],
+    fonts,
+    aliases,
+    family_styles: {},
+  };
+}
+
+function parseExtraJson(text) {
+  try {
+    const value = JSON.parse(text || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function csvResponse(rows, filename) {
+  const body = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  return new Response(body, {
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 async function collect(request, env) {
   let body;
   try {
@@ -57,7 +113,10 @@ async function collect(request, env) {
   const resolveVersion = cleanText(body.resolve_version, 64);
   const platform = cleanText(body.platform, 32);
   const sessionSeconds = Math.max(0, Math.min(7 * 24 * 3600, Number(body.session_seconds || 0)));
-  const extraJson = JSON.stringify(body.extra || {});
+  const extraJson = JSON.stringify(trimExtra(event, body.extra || {}));
+  if (extraJson.length > MAX_EXTRA_JSON_CHARS) {
+    return json({ ok: false, error: "extra_too_large", max_chars: MAX_EXTRA_JSON_CHARS }, 413);
+  }
 
   await env.DB.prepare(
     `INSERT INTO users (
@@ -81,6 +140,104 @@ async function collect(request, env) {
   ).bind(installHash, event, now, country, region, city, appVersion, resolveVersion, platform, sessionSeconds, extraJson).run();
 
   return json({ ok: true });
+}
+
+async function fontData(request, env) {
+  if (!adminOk(request, env)) {
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const url = new URL(request.url);
+  const format = (url.searchParams.get("format") || "json").toLowerCase();
+  const limit = Math.max(1, Math.min(10000, Number(url.searchParams.get("limit") || 5000)));
+  const rows = await env.DB.prepare(
+    `SELECT event, created_at, country, region, city, app_version, resolve_version, platform, extra_json
+     FROM events
+     WHERE event IN ('font_rule_learned', 'font_inventory')
+     ORDER BY created_at DESC
+     LIMIT ?`
+  ).bind(limit).all();
+
+  const rules = [];
+  const inventories = [];
+  const fontSet = new Set();
+  const aliasSet = new Set();
+  const results = rows.results || [];
+  for (const row of results) {
+    const extra = parseExtraJson(row.extra_json);
+    if (row.event === "font_rule_learned") {
+      const rule = extra.rule && typeof extra.rule === "object" ? extra.rule : extra;
+      rules.push({
+        source: cleanText(rule.source, 160),
+        accepted: cleanText(rule.accepted, 160),
+        candidates: Array.isArray(rule.candidates) ? rule.candidates.slice(0, 24).map((item) => cleanText(item, 160)) : [],
+        created_at: cleanText(rule.created_at || row.created_at, 40),
+        app_version: cleanText(row.app_version, 32),
+        resolve_version: cleanText(rule.resolve_version || row.resolve_version, 64),
+        platform: cleanText(rule.platform || row.platform, 32),
+        country: cleanText(row.country, 48),
+        city: cleanText(row.city, 80),
+      });
+    }
+    if (row.event === "font_inventory") {
+      const fonts = Array.isArray(extra.fonts) ? extra.fonts.map((item) => cleanText(item, 160)).filter(Boolean) : [];
+      const aliases = extra.aliases && typeof extra.aliases === "object" ? extra.aliases : {};
+      const learned = Array.isArray(extra.learned_rules) ? extra.learned_rules : [];
+      for (const font of fonts) fontSet.add(font);
+      for (const [name, values] of Object.entries(aliases)) {
+        aliasSet.add(cleanText(name, 160));
+        if (Array.isArray(values)) {
+          for (const value of values) aliasSet.add(cleanText(value, 160));
+        }
+      }
+      inventories.push({
+        created_at: cleanText(row.created_at, 40),
+        app_version: cleanText(row.app_version, 32),
+        resolve_version: cleanText(extra.resolve_version || row.resolve_version, 64),
+        platform: cleanText(extra.platform || row.platform, 32),
+        country: cleanText(row.country, 48),
+        city: cleanText(row.city, 80),
+        font_count: fonts.length,
+        alias_key_count: Object.keys(aliases).length,
+        learned_rule_count: learned.length,
+        fonts,
+        aliases,
+        family_styles: extra.family_styles && typeof extra.family_styles === "object" ? extra.family_styles : {},
+      });
+    }
+  }
+
+  if (format === "csv") {
+    return csvResponse([
+      ["source", "accepted", "candidates", "created_at", "app_version", "resolve_version", "platform", "country", "city"],
+      ...rules.map((rule) => [
+        rule.source,
+        rule.accepted,
+        rule.candidates.join(" | "),
+        rule.created_at,
+        rule.app_version,
+        rule.resolve_version,
+        rule.platform,
+        rule.country,
+        rule.city,
+      ]),
+    ], "qinghe-font-rules.csv");
+  }
+
+  return json({
+    ok: true,
+    generated_at: new Date().toISOString(),
+    counts: {
+      events: results.length,
+      rules: rules.length,
+      inventories: inventories.length,
+      unique_fonts: fontSet.size,
+      unique_alias_names: aliasSet.size,
+    },
+    rules,
+    inventories,
+    unique_fonts: [...fontSet].sort((a, b) => a.localeCompare(b, "zh-CN")),
+  });
 }
 
 async function summary(request, env) {
@@ -155,6 +312,9 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/api/summary") {
       return summary(request, env);
+    }
+    if (request.method === "GET" && url.pathname === "/api/font-data") {
+      return fontData(request, env);
     }
     return json({ ok: true, service: "qinghe-bfd-analytics" });
   },

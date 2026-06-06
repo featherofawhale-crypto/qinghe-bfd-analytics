@@ -48,6 +48,8 @@
     <div class="toolbar">
       <input id="token" type="password" placeholder="后台 Admin Token">
       <button id="load">刷新数据</button>
+      <button id="exportFontJson">导出字体数据 JSON</button>
+      <button id="exportFontCsv">导出字体规则 CSV</button>
       <span id="status" class="muted"></span>
     </div>
     <div id="apiHint" class="muted"></div>
@@ -180,8 +182,45 @@
       statusEl.textContent = `已刷新 ${new Date().toLocaleString()}`;
     }
 
+    async function exportFontData(format) {
+      if (!cfg.API_BASE) {
+        throw new Error("请先在 config.js 里配置 Worker API_BASE");
+      }
+      const token = tokenInput.value.trim();
+      localStorage.setItem("qinghe_admin_token", token);
+      if (!token) {
+        throw new Error("请输入后台 Admin Token 后再导出");
+      }
+      statusEl.textContent = "正在导出字体数据...";
+      const url = `${cfg.API_BASE}/api/font-data?format=${encodeURIComponent(format)}`;
+      const res = await fetch(url, {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`导出失败：HTTP ${res.status} ${text.slice(0, 120)}`);
+      }
+      const blob = await res.blob();
+      const suffix = format === "csv" ? "csv" : "json";
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `qinghe-font-data-${new Date().toISOString().slice(0, 10)}.${suffix}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(downloadUrl);
+      statusEl.textContent = `字体数据已导出 ${new Date().toLocaleString()}`;
+    }
+
     document.getElementById("load").addEventListener("click", () => {
       loadData().catch(err => statusEl.textContent = err.message);
+    });
+    document.getElementById("exportFontJson").addEventListener("click", () => {
+      exportFontData("json").catch(err => statusEl.textContent = err.message);
+    });
+    document.getElementById("exportFontCsv").addEventListener("click", () => {
+      exportFontData("csv").catch(err => statusEl.textContent = err.message);
     });
     if (savedToken) {
       loadData().catch(err => statusEl.textContent = err.message);
