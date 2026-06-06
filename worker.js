@@ -37,18 +37,36 @@ function cleanText(value, max = 120) {
   return String(value || "").slice(0, max);
 }
 
+function uniqueTexts(values, maxItems, maxChars = 160) {
+  const seen = new Set();
+  const result = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    const text = cleanText(String(value || "").replace(/\s+/g, " ").trim(), maxChars);
+    const key = text.toLocaleLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+    if (result.length >= maxItems) break;
+  }
+  return result;
+}
+
 function trimExtra(event, extra) {
   if (!extra || typeof extra !== "object") return {};
   if (event !== "font_inventory") return extra;
-  const fonts = Array.isArray(extra.fonts)
-    ? extra.fonts.slice(0, MAX_FONT_INVENTORY_FONTS).map((item) => cleanText(item, 160)).filter(Boolean)
-    : [];
+  const fonts = uniqueTexts(extra.fonts, MAX_FONT_INVENTORY_FONTS);
   const aliases = {};
   const rawAliases = extra.aliases && typeof extra.aliases === "object" ? extra.aliases : {};
-  for (const [key, values] of Object.entries(rawAliases).slice(0, MAX_FONT_INVENTORY_ALIAS_KEYS)) {
-    const cleanKey = cleanText(key, 160);
-    if (!cleanKey || !Array.isArray(values)) continue;
-    aliases[cleanKey] = values.slice(0, MAX_FONT_ALIAS_VALUES).map((item) => cleanText(item, 160)).filter(Boolean);
+  const seenAliasKeys = new Set();
+  for (const [key, values] of Object.entries(rawAliases)) {
+    const cleanKey = cleanText(String(key || "").replace(/\s+/g, " ").trim(), 160);
+    const foldedKey = cleanKey.toLocaleLowerCase();
+    if (!cleanKey || seenAliasKeys.has(foldedKey)) continue;
+    const cleanValues = uniqueTexts(values, MAX_FONT_ALIAS_VALUES);
+    if (!cleanValues.length) continue;
+    seenAliasKeys.add(foldedKey);
+    aliases[cleanKey] = cleanValues;
+    if (Object.keys(aliases).length >= MAX_FONT_INVENTORY_ALIAS_KEYS) break;
   }
   return {
     app_version: cleanText(extra.app_version, 32),
