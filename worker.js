@@ -19,6 +19,17 @@ function json(data, status = 200) {
   });
 }
 
+function html(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 async function sha256Hex(text) {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -216,7 +227,7 @@ async function fontData(request, env) {
   const rows = await env.DB.prepare(
     `SELECT event, created_at, country, region, city, app_version, resolve_version, platform, extra_json
      FROM events
-     WHERE event IN ('font_rule_learned', 'font_inventory')
+     WHERE event IN ('font_rule_learned', 'font_rule_failed', 'font_inventory')
      ORDER BY created_at DESC
      LIMIT ?`
   ).bind(limit).all();
@@ -228,12 +239,23 @@ async function fontData(request, env) {
   const results = rows.results || [];
   for (const row of results) {
     const extra = parseExtraJson(row.extra_json);
-    if (row.event === "font_rule_learned") {
+    if (row.event === "font_rule_learned" || row.event === "font_rule_failed") {
       const rule = extra.rule && typeof extra.rule === "object" ? extra.rule : extra;
       rules.push({
+        ok: row.event === "font_rule_learned" && rule.ok !== false,
+        event: cleanText(row.event, 48),
         source: cleanText(rule.source, 160),
         accepted: cleanText(rule.accepted, 160),
+        actual_font: cleanText(rule.actual_font, 160),
+        accepted_candidate: cleanText(rule.accepted_candidate, 220),
+        registered_font_file: cleanText(rule.registered_font_file || rule.registered_font_path, 160),
+        registered_font_name: cleanText(rule.registered_font_name, 160),
+        candidate_attempts: Math.max(0, Math.min(10000, Number(rule.candidate_attempts || 0))),
+        probe_warning: cleanText(rule.probe_warning, 300),
+        message: cleanText(rule.message, 500),
         candidates: Array.isArray(rule.candidates) ? rule.candidates.slice(0, 24).map((item) => cleanText(item, 160)) : [],
+        rejected: Array.isArray(rule.rejected) ? rule.rejected.slice(0, 24).map((item) => cleanText(item, 160)) : [],
+        source_keys: Array.isArray(rule.source_keys) ? rule.source_keys.slice(0, 24).map((item) => cleanText(item, 160)) : [],
         created_at: cleanText(rule.created_at || row.created_at, 40),
         app_version: cleanText(row.app_version, 32),
         resolve_version: cleanText(rule.resolve_version || row.resolve_version, 64),
@@ -283,11 +305,43 @@ async function fontData(request, env) {
 
   if (format === "csv") {
     return csvResponse([
-      ["source", "accepted", "candidates", "created_at", "app_version", "resolve_version", "platform", "country", "city"],
+      [
+        "ok",
+        "event",
+        "source",
+        "accepted",
+        "actual_font",
+        "accepted_candidate",
+        "registered_font_file",
+        "registered_font_name",
+        "candidate_attempts",
+        "probe_warning",
+        "message",
+        "candidates",
+        "rejected",
+        "source_keys",
+        "created_at",
+        "app_version",
+        "resolve_version",
+        "platform",
+        "country",
+        "city",
+      ],
       ...rules.map((rule) => [
+        rule.ok ? "1" : "0",
+        rule.event,
         rule.source,
         rule.accepted,
+        rule.actual_font,
+        rule.accepted_candidate,
+        rule.registered_font_file,
+        rule.registered_font_name,
+        rule.candidate_attempts,
+        rule.probe_warning,
+        rule.message,
         rule.candidates.join(" | "),
+        rule.rejected.join(" | "),
+        rule.source_keys.join(" | "),
         rule.created_at,
         rule.app_version,
         rule.resolve_version,
@@ -304,6 +358,8 @@ async function fontData(request, env) {
     counts: {
       events: results.length,
       rules: rules.length,
+      failed_rules: rules.filter((rule) => !rule.ok).length,
+      learned_rules: rules.filter((rule) => rule.ok).length,
       inventories: inventories.length,
       unique_fonts: fontSet.size,
       unique_alias_names: aliasSet.size,
@@ -375,6 +431,150 @@ async function summary(request, env) {
   });
 }
 
+function dashboardPage() {
+  return html(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>清何剪辑工具箱后台</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f8fb; color: #172033; }
+    header { padding: 22px 28px; background: #111827; color: white; }
+    main { padding: 22px 28px 48px; max-width: 1480px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    h2 { margin: 26px 0 12px; font-size: 18px; }
+    .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+    input { height: 36px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 280px; }
+    button { height: 38px; padding: 0 14px; border: 1px solid #2563eb; background: #2563eb; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: white; color: #2563eb; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .card { background: white; border: 1px solid #dbe3ef; border-radius: 8px; padding: 14px; }
+    .num { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+    .label { color: #64748b; font-size: 13px; }
+    .panel { background: white; border: 1px solid #dbe3ef; border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
+    .table-wrap { overflow: auto; max-height: 520px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid #e5eaf2; text-align: left; white-space: nowrap; vertical-align: top; }
+    th { position: sticky; top: 0; background: #eef3f9; z-index: 1; }
+    tr.bad td { background: #fff7f7; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .muted { color: #64748b; }
+    .status { min-height: 22px; margin: 8px 0 14px; color: #475569; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>清何剪辑工具箱后台</h1>
+    <div class="muted">统计、字体规则、字体探针失败数据</div>
+  </header>
+  <main>
+    <div class="bar">
+      <input id="token" type="password" placeholder="Admin Token" />
+      <button id="load">刷新数据</button>
+      <button id="csv" class="secondary">导出字体 CSV</button>
+      <button id="json" class="secondary">导出字体 JSON</button>
+    </div>
+    <div id="status" class="status"></div>
+    <section class="cards" id="cards"></section>
+    <h2>字体失败规则</h2>
+    <div class="panel"><div class="table-wrap"><table id="failed"></table></div></div>
+    <h2>字体规则明细</h2>
+    <div class="panel"><div class="table-wrap"><table id="rules"></table></div></div>
+    <h2>最近事件</h2>
+    <div class="panel"><div class="table-wrap"><table id="recent"></table></div></div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const status = $("status");
+    const tokenInput = $("token");
+    tokenInput.value = localStorage.getItem("qh_admin_token") || "";
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+    async function api(path) {
+      const token = tokenInput.value.trim();
+      if (!token) throw new Error("请输入 Admin Token");
+      localStorage.setItem("qh_admin_token", token);
+      const res = await fetch(path, { headers: { "X-Admin-Token": token } });
+      if (!res.ok) throw new Error("请求失败: " + res.status);
+      return res.json();
+    }
+    function renderTable(id, rows, columns) {
+      const table = $(id);
+      table.innerHTML = "<thead><tr>" + columns.map((c) => "<th>" + esc(c.label) + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map((row) => "<tr class='" + (row.ok === false ? "bad" : "") + "'>" +
+          columns.map((c) => "<td>" + esc(typeof c.value === "function" ? c.value(row) : row[c.key]) + "</td>").join("") +
+        "</tr>").join("") + "</tbody>";
+    }
+    function renderCards(summary, fonts) {
+      const totals = summary.totals || {};
+      const counts = fonts.counts || {};
+      const items = [
+        ["用户", totals.users],
+        ["事件", totals.events],
+        ["启动", totals.starts],
+        ["检测开始", totals.detect_starts],
+        ["检测完成", totals.detect_done],
+        ["字体规则", counts.rules],
+        ["字体失败", counts.failed_rules],
+        ["字体清单", counts.inventories],
+      ];
+      $("cards").innerHTML = items.map(([label, value]) => "<div class='card'><div class='num'>" + esc(value ?? 0) + "</div><div class='label'>" + esc(label) + "</div></div>").join("");
+    }
+    async function load() {
+      status.textContent = "加载中...";
+      const [summary, fonts] = await Promise.all([api("/api/summary"), api("/api/font-data?limit=8000")]);
+      renderCards(summary, fonts);
+      const rules = fonts.rules || [];
+      const failed = rules.filter((row) => row.ok === false);
+      const fontCols = [
+        { label: "时间", key: "created_at" },
+        { label: "状态", value: (r) => r.ok ? "成功" : "失败" },
+        { label: "源字体", key: "source" },
+        { label: "接受字体", key: "accepted" },
+        { label: "实际字体", key: "actual_font" },
+        { label: "候选", key: "accepted_candidate" },
+        { label: "文件", key: "registered_font_file" },
+        { label: "尝试", key: "candidate_attempts" },
+        { label: "提示", key: "probe_warning" },
+        { label: "Resolve", key: "resolve_version" },
+        { label: "地区", value: (r) => [r.country, r.city].filter(Boolean).join(" / ") },
+      ];
+      renderTable("failed", failed, fontCols);
+      renderTable("rules", rules.slice(0, 500), fontCols);
+      renderTable("recent", summary.recent || [], [
+        { label: "时间", key: "created_at" },
+        { label: "事件", key: "event" },
+        { label: "版本", key: "app_version" },
+        { label: "Resolve", key: "resolve_version" },
+        { label: "平台", key: "platform" },
+        { label: "地区", value: (r) => [r.country, r.city].filter(Boolean).join(" / ") },
+        { label: "时长", key: "session_seconds" },
+      ]);
+      status.textContent = "已加载 " + new Date().toLocaleString();
+    }
+    async function download(path, filename) {
+      const token = tokenInput.value.trim();
+      if (!token) throw new Error("请输入 Admin Token");
+      const res = await fetch(path, { headers: { "X-Admin-Token": token } });
+      if (!res.ok) throw new Error("导出失败: " + res.status);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    $("load").onclick = () => load().catch((err) => status.textContent = err.message);
+    $("csv").onclick = () => download("/api/font-data?format=csv&limit=10000", "qinghe-font-rules.csv").catch((err) => status.textContent = err.message);
+    $("json").onclick = () => download("/api/font-data?format=json&limit=10000", "qinghe-font-rules.json").catch((err) => status.textContent = err.message);
+  </script>
+</body>
+</html>`);
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
@@ -389,6 +589,9 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/api/font-data") {
       return fontData(request, env);
+    }
+    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
+      return dashboardPage();
     }
     return json({ ok: true, service: "qinghe-bfd-analytics" });
   },
