@@ -439,59 +439,140 @@ function dashboardPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>清何剪辑工具箱后台</title>
   <style>
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f8fb; color: #172033; }
-    header { padding: 22px 28px; background: #111827; color: white; }
-    main { padding: 22px 28px 48px; max-width: 1480px; margin: 0 auto; }
-    h1 { margin: 0 0 8px; font-size: 24px; }
-    h2 { margin: 26px 0 12px; font-size: 18px; }
-    .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
-    input { height: 36px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 6px; min-width: 280px; }
-    button { height: 38px; padding: 0 14px; border: 1px solid #2563eb; background: #2563eb; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; }
-    button.secondary { background: white; color: #2563eb; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-    .card { background: white; border: 1px solid #dbe3ef; border-radius: 8px; padding: 14px; }
-    .num { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
-    .label { color: #64748b; font-size: 13px; }
-    .panel { background: white; border: 1px solid #dbe3ef; border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
-    .table-wrap { overflow: auto; max-height: 520px; }
-    table { border-collapse: collapse; width: 100%; font-size: 13px; }
-    th, td { padding: 9px 10px; border-bottom: 1px solid #e5eaf2; text-align: left; white-space: nowrap; vertical-align: top; }
-    th { position: sticky; top: 0; background: #eef3f9; z-index: 1; }
-    tr.bad td { background: #fff7f7; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    .muted { color: #64748b; }
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --panel-2: #f8fbff;
+      --text: #172033;
+      --muted: #64748b;
+      --line: #dbe4ee;
+      --blue: #2563eb;
+      --green: #059669;
+      --orange: #ea580c;
+      --red: #dc2626;
+      --purple: #7c3aed;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 24px 28px 14px; background: linear-gradient(135deg, #111827 0%, #1f3a5f 100%); color: white; }
+    main { padding: 20px 28px 48px; max-width: 1580px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: 0; }
+    h2 { margin: 0 0 5px; font-size: 16px; }
+    input, select { height: 38px; padding: 0 11px; border: 1px solid #cbd5e1; border-radius: 7px; min-width: 250px; background: white; color: var(--text); }
+    button { height: 38px; padding: 0 14px; border: 1px solid var(--blue); background: var(--blue); color: white; border-radius: 7px; cursor: pointer; font-weight: 650; }
+    button.secondary { background: white; color: var(--blue); }
+    button.ghost { background: #eef4ff; color: #1e40af; border-color: #bfdbfe; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #eaf0f8; border: 1px solid #d5e0ee; border-radius: 6px; padding: 2px 6px; }
+    .muted { color: var(--muted); }
+    .toolbar { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     .status { min-height: 22px; margin: 8px 0 14px; color: #475569; }
+    .cards { display: grid; grid-template-columns: repeat(8, minmax(120px, 1fr)); gap: 12px; margin: 14px 0; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-height: 92px; }
+    .card.accent-blue { border-top: 4px solid var(--blue); }
+    .card.accent-green { border-top: 4px solid var(--green); }
+    .card.accent-orange { border-top: 4px solid var(--orange); }
+    .card.accent-red { border-top: 4px solid var(--red); }
+    .card.accent-purple { border-top: 4px solid var(--purple); }
+    .num { font-size: 25px; font-weight: 750; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+    .label { color: var(--muted); font-size: 13px; }
+    .subvalue { color: var(--muted); font-size: 12px; margin-top: 7px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .wide { grid-column: 1 / -1; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow: hidden; }
+    .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 10px; }
+    .note { color: var(--muted); font-size: 12px; }
+    .table-wrap { overflow: auto; max-height: 520px; border: 1px solid #edf2f7; border-radius: 7px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #e5eaf2; text-align: left; white-space: nowrap; vertical-align: top; }
+    th { position: sticky; top: 0; background: #eef3f9; z-index: 1; color: #475569; }
+    td.num-cell, th.num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.bad td { background: #fff7f7; }
+    .mini-chart { height: 230px; display: flex; align-items: end; gap: 5px; padding: 10px 8px 4px; border: 1px solid #edf2f7; border-radius: 7px; background: var(--panel-2); overflow: hidden; }
+    .bar-col { flex: 1; min-width: 8px; background: linear-gradient(180deg, #60a5fa, #2563eb); border-radius: 5px 5px 0 0; position: relative; }
+    .bar-col:hover::after { content: attr(data-title); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; background: #111827; color: white; padding: 5px 7px; border-radius: 5px; font-size: 12px; margin-bottom: 5px; z-index: 5; }
+    .bar-line { height: 7px; border-radius: 999px; background: #e2e8f0; overflow: hidden; min-width: 96px; }
+    .bar-line > span { display: block; height: 100%; background: var(--blue); border-radius: inherit; }
+    .tabs { display: flex; gap: 7px; flex-wrap: wrap; margin: 10px 0 14px; }
+    .tab { background: white; border-color: var(--line); color: #334155; }
+    .tab.active { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
+    .hidden { display: none; }
+    @media (max-width: 1180px) {
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>清何剪辑工具箱后台</h1>
-    <div class="muted">统计、字体规则、字体探针失败数据</div>
+    <div class="muted">匿名统计、功能使用、版本分布、地区维度、字体探针与规则导出</div>
   </header>
   <main>
-    <div class="bar">
+    <div class="toolbar">
       <input id="token" type="password" placeholder="Admin Token" />
       <button id="load">刷新数据</button>
+      <button id="exportSummary" class="secondary">导出统计 JSON</button>
       <button id="csv" class="secondary">导出字体 CSV</button>
       <button id="json" class="secondary">导出字体 JSON</button>
+      <select id="range">
+        <option value="60">最近 60 天</option>
+        <option value="30">最近 30 天</option>
+        <option value="14">最近 14 天</option>
+        <option value="7">最近 7 天</option>
+      </select>
     </div>
     <div id="status" class="status"></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="overview">概览</button>
+      <button class="tab" data-tab="usage">功能使用</button>
+      <button class="tab" data-tab="fonts">字体数据</button>
+      <button class="tab" data-tab="raw">最近事件</button>
+    </div>
     <section class="cards" id="cards"></section>
-    <h2>字体失败规则</h2>
-    <div class="panel"><div class="table-wrap"><table id="failed"></table></div></div>
-    <h2>字体规则明细</h2>
-    <div class="panel"><div class="table-wrap"><table id="rules"></table></div></div>
-    <h2>最近事件</h2>
-    <div class="panel"><div class="table-wrap"><table id="recent"></table></div></div>
+    <div id="view-overview" class="view grid">
+      <section class="panel wide">
+        <div class="panel-head"><div><h2>按天趋势</h2><div class="note">用户、事件、检测启动量，适合看版本发布后的使用变化。</div></div></div>
+        <div id="trendChart" class="mini-chart"></div>
+        <div class="table-wrap" style="margin-top:10px"><table id="byDay"></table></div>
+      </section>
+      <section class="panel"><div class="panel-head"><div><h2>国家 / 地区</h2><div class="note">Cloudflare 粗略地理维度，不显示原始 IP。</div></div></div><div class="table-wrap"><table id="byCountry"></table></div></section>
+      <section class="panel"><div class="panel-head"><div><h2>城市</h2><div class="note">城市维度用于观察主要使用区域。</div></div></div><div class="table-wrap"><table id="byCity"></table></div></section>
+      <section class="panel wide"><div class="panel-head"><div><h2>插件 / Resolve / 系统版本</h2><div class="note">判断用户是否升级到新版本，以及 Resolve 19/20/21 的占比。</div></div></div><div class="table-wrap"><table id="byVersion"></table></div></section>
+    </div>
+    <div id="view-usage" class="view grid hidden">
+      <section class="panel"><div class="panel-head"><div><h2>事件维度</h2><div class="note">启动、检测、字体、音频、反馈等行为分布。</div></div></div><div class="table-wrap"><table id="byEvent"></table></div></section>
+      <section class="panel"><div class="panel-head"><div><h2>平台维度</h2><div class="note">不同系统上的用户、检测启动和完成情况。</div></div></div><div class="table-wrap"><table id="byPlatform"></table></div></section>
+      <section class="panel wide"><div class="panel-head"><div><h2>功能健康度</h2><div class="note">检测完成率、字体失败量、平均会话时长。</div></div></div><div class="table-wrap"><table id="health"></table></div></section>
+    </div>
+    <div id="view-fonts" class="view grid hidden">
+      <section class="panel wide"><div class="panel-head"><div><h2>字体失败队列</h2><div class="note">优先看这里，失败字体可导出后用于下个版本补规则。</div></div></div><div class="table-wrap"><table id="failed"></table></div></section>
+      <section class="panel wide"><div class="panel-head"><div><h2>字体规则明细</h2><div class="note">成功和失败都会列出，包含候选、实际字体、Resolve 版本和地区。</div></div></div><div class="table-wrap"><table id="rules"></table></div></section>
+      <section class="panel wide"><div class="panel-head"><div><h2>字体清单上报</h2><div class="note">去重后的字体库存和别名数量，避免上传重复字体撑爆后台。</div></div></div><div class="table-wrap"><table id="inventories"></table></div></section>
+    </div>
+    <div id="view-raw" class="view hidden">
+      <section class="panel"><div class="panel-head"><div><h2>最近事件</h2><div class="note">最近 80 条匿名事件，不包含原始 IP。</div></div></div><div class="table-wrap"><table id="recent"></table></div></section>
+    </div>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
     const status = $("status");
     const tokenInput = $("token");
     tokenInput.value = localStorage.getItem("qh_admin_token") || "";
+    let latestSummary = null;
+    let latestFonts = null;
 
     function esc(value) {
       return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+    function num(value) {
+      const n = Number(value || 0);
+      return Number.isFinite(n) ? n.toLocaleString("zh-CN", { maximumFractionDigits: 1 }) : "0";
+    }
+    function pct(part, whole) {
+      const p = Number(part || 0);
+      const w = Number(whole || 0);
+      return w ? (p / w * 100).toFixed(1) + "%" : "0%";
     }
     async function api(path) {
       const token = tokenInput.value.trim();
@@ -501,32 +582,112 @@ function dashboardPage() {
       if (!res.ok) throw new Error("请求失败: " + res.status);
       return res.json();
     }
-    function renderTable(id, rows, columns) {
+    function bar(value, max) {
+      const width = max ? Math.max(2, Math.min(100, Number(value || 0) / max * 100)) : 0;
+      return "<div class='bar-line'><span style='width:" + width + "%'></span></div>";
+    }
+    function renderTable(id, rows, columns, options = {}) {
       const table = $(id);
+      if (!rows || !rows.length) {
+        table.innerHTML = "<tbody><tr><td class='muted'>暂无数据</td></tr></tbody>";
+        return;
+      }
+      const maxBy = {};
+      for (const col of columns) {
+        maxBy[col.key] = Math.max(...rows.map((row) => Number(row[col.key] || 0)));
+      }
       table.innerHTML = "<thead><tr>" + columns.map((c) => "<th>" + esc(c.label) + "</th>").join("") + "</tr></thead><tbody>" +
         rows.map((row) => "<tr class='" + (row.ok === false ? "bad" : "") + "'>" +
-          columns.map((c) => "<td>" + esc(typeof c.value === "function" ? c.value(row) : row[c.key]) + "</td>").join("") +
+          columns.map((c) => {
+            const value = typeof c.value === "function" ? c.value(row) : row[c.key];
+            if (options.barKey === c.key) return "<td>" + bar(row[c.key], maxBy[c.key]) + "</td>";
+            return "<td class='" + (c.num ? "num-cell" : "") + "'>" + esc(c.num ? num(value) : value) + "</td>";
+          }).join("") +
         "</tr>").join("") + "</tbody>";
+    }
+    function withShare(rows, key = "events") {
+      const total = rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+      return rows.map((row) => ({ ...row, share: pct(row[key], total) }));
+    }
+    function renderTrend(rows) {
+      const rangeDays = Number($("range").value || 60);
+      const data = [...(rows || [])].sort((a, b) => String(a.day).localeCompare(String(b.day))).slice(-rangeDays);
+      const max = Math.max(1, ...data.map((row) => Number(row.events || 0)));
+      $("trendChart").innerHTML = data.map((row) => {
+        const height = Math.max(4, Number(row.events || 0) / max * 100);
+        const title = row.day + " / 事件 " + num(row.events) + " / 用户 " + num(row.users) + " / 检测 " + num(row.detect_starts);
+        return "<div class='bar-col' data-title='" + esc(title) + "' style='height:" + height + "%'></div>";
+      }).join("");
     }
     function renderCards(summary, fonts) {
       const totals = summary.totals || {};
       const counts = fonts.counts || {};
       const items = [
-        ["用户", totals.users],
-        ["事件", totals.events],
-        ["启动", totals.starts],
-        ["检测开始", totals.detect_starts],
-        ["检测完成", totals.detect_done],
-        ["字体规则", counts.rules],
-        ["字体失败", counts.failed_rules],
-        ["字体清单", counts.inventories],
+        ["用户", totals.users, "匿名安装数", "accent-blue"],
+        ["事件", totals.events, "全部上报行为", "accent-blue"],
+        ["启动", totals.starts, "打开插件次数", "accent-green"],
+        ["开始检测", totals.detect_starts, "点击检测次数", "accent-orange"],
+        ["检测完成", totals.detect_done, "完成率 " + pct(totals.detect_done, totals.detect_starts), "accent-green"],
+        ["平均时长", Math.round(Number(totals.avg_session_seconds || 0)) + "s", "关闭时上报", "accent-purple"],
+        ["字体规则", counts.rules, "成功 " + num(counts.learned_rules), "accent-blue"],
+        ["字体失败", counts.failed_rules, "优先补规则", "accent-red"],
       ];
-      $("cards").innerHTML = items.map(([label, value]) => "<div class='card'><div class='num'>" + esc(value ?? 0) + "</div><div class='label'>" + esc(label) + "</div></div>").join("");
+      $("cards").innerHTML = items.map(([label, value, sub, klass]) => "<div class='card " + klass + "'><div class='num'>" + esc(value ?? 0) + "</div><div class='label'>" + esc(label) + "</div><div class='subvalue'>" + esc(sub) + "</div></div>").join("");
     }
-    async function load() {
-      status.textContent = "加载中...";
-      const [summary, fonts] = await Promise.all([api("/api/summary"), api("/api/font-data?limit=8000")]);
+    function renderAll(summary, fonts) {
+      latestSummary = summary;
+      latestFonts = fonts;
       renderCards(summary, fonts);
+      renderTrend(summary.byDay || []);
+      renderTable("byDay", [...(summary.byDay || [])].reverse(), [
+        { label: "日期", key: "day" },
+        { label: "用户", key: "users", num: true },
+        { label: "事件", key: "events", num: true },
+        { label: "检测启动", key: "detect_starts", num: true },
+      ], { barKey: "events" });
+      renderTable("byCountry", withShare(summary.byCountry || []), [
+        { label: "国家/地区", key: "country" },
+        { label: "用户", key: "users", num: true },
+        { label: "事件", key: "events", num: true },
+        { label: "占比", key: "share" },
+      ], { barKey: "events" });
+      renderTable("byCity", summary.byCity || [], [
+        { label: "国家", key: "country" },
+        { label: "城市", key: "city" },
+        { label: "用户", key: "users", num: true },
+        { label: "事件", key: "events", num: true },
+      ], { barKey: "events" });
+      renderTable("byVersion", summary.byVersion || [], [
+        { label: "插件版本", key: "app_version" },
+        { label: "Resolve", key: "resolve_version" },
+        { label: "系统", key: "platform" },
+        { label: "用户", key: "users", num: true },
+        { label: "事件", key: "events", num: true },
+      ], { barKey: "events" });
+      renderTable("byEvent", withShare(summary.byEvent || []), [
+        { label: "事件", key: "event" },
+        { label: "用户", key: "users", num: true },
+        { label: "次数", key: "events", num: true },
+        { label: "占比", key: "share" },
+      ], { barKey: "events" });
+      renderTable("byPlatform", (summary.byPlatform || []).map((row) => ({ ...row, completion_rate: pct(row.detect_done, row.detect_starts) })), [
+        { label: "系统", key: "platform" },
+        { label: "用户", key: "users", num: true },
+        { label: "事件", key: "events", num: true },
+        { label: "开始检测", key: "detect_starts", num: true },
+        { label: "检测完成", key: "detect_done", num: true },
+        { label: "完成率", key: "completion_rate" },
+      ]);
+      renderTable("health", [
+        { metric: "检测完成率", value: pct(summary.totals?.detect_done, summary.totals?.detect_starts), note: "detect_done / detect_start" },
+        { metric: "平均会话时长", value: Math.round(Number(summary.totals?.avg_session_seconds || 0)) + " 秒", note: "app_close 上报" },
+        { metric: "字体失败规则", value: num(fonts.counts?.failed_rules), note: "font_rule_failed" },
+        { metric: "字体库存上报", value: num(fonts.counts?.inventories), note: "font_inventory 去重后" },
+      ], [
+        { label: "指标", key: "metric" },
+        { label: "数值", key: "value" },
+        { label: "说明", key: "note" },
+      ]);
       const rules = fonts.rules || [];
       const failed = rules.filter((row) => row.ok === false);
       const fontCols = [
@@ -537,13 +698,23 @@ function dashboardPage() {
         { label: "实际字体", key: "actual_font" },
         { label: "候选", key: "accepted_candidate" },
         { label: "文件", key: "registered_font_file" },
-        { label: "尝试", key: "candidate_attempts" },
+        { label: "尝试", key: "candidate_attempts", num: true },
         { label: "提示", key: "probe_warning" },
         { label: "Resolve", key: "resolve_version" },
         { label: "地区", value: (r) => [r.country, r.city].filter(Boolean).join(" / ") },
       ];
       renderTable("failed", failed, fontCols);
-      renderTable("rules", rules.slice(0, 500), fontCols);
+      renderTable("rules", rules.slice(0, 800), fontCols);
+      renderTable("inventories", fonts.inventories || [], [
+        { label: "时间", key: "created_at" },
+        { label: "插件", key: "app_version" },
+        { label: "Resolve", key: "resolve_version" },
+        { label: "系统", key: "platform" },
+        { label: "地区", value: (r) => [r.country, r.city].filter(Boolean).join(" / ") },
+        { label: "字体数", key: "font_count", num: true },
+        { label: "别名数", key: "alias_key_count", num: true },
+        { label: "学习规则", key: "learned_rule_count", num: true },
+      ]);
       renderTable("recent", summary.recent || [], [
         { label: "时间", key: "created_at" },
         { label: "事件", key: "event" },
@@ -551,8 +722,13 @@ function dashboardPage() {
         { label: "Resolve", key: "resolve_version" },
         { label: "平台", key: "platform" },
         { label: "地区", value: (r) => [r.country, r.city].filter(Boolean).join(" / ") },
-        { label: "时长", key: "session_seconds" },
+        { label: "时长", key: "session_seconds", num: true },
       ]);
+    }
+    async function load() {
+      status.textContent = "加载中...";
+      const [summary, fonts] = await Promise.all([api("/api/summary"), api("/api/font-data?limit=8000")]);
+      renderAll(summary, fonts);
       status.textContent = "已加载 " + new Date().toLocaleString();
     }
     async function download(path, filename) {
@@ -567,7 +743,32 @@ function dashboardPage() {
       a.click();
       URL.revokeObjectURL(a.href);
     }
+    function downloadJson(data, filename) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    document.querySelectorAll(".tab").forEach((button) => {
+      button.onclick = () => {
+        document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab === button));
+        document.querySelectorAll(".view").forEach((view) => view.classList.add("hidden"));
+        $("view-" + button.dataset.tab).classList.remove("hidden");
+      };
+    });
+    $("range").onchange = () => {
+      if (latestSummary) renderTrend(latestSummary.byDay || []);
+    };
     $("load").onclick = () => load().catch((err) => status.textContent = err.message);
+    $("exportSummary").onclick = () => {
+      if (!latestSummary) {
+        status.textContent = "请先刷新数据";
+        return;
+      }
+      downloadJson({ summary: latestSummary, fonts: latestFonts }, "qinghe-dashboard-data.json");
+    };
     $("csv").onclick = () => download("/api/font-data?format=csv&limit=10000", "qinghe-font-rules.csv").catch((err) => status.textContent = err.message);
     $("json").onclick = () => download("/api/font-data?format=json&limit=10000", "qinghe-font-rules.json").catch((err) => status.textContent = err.message);
   </script>
